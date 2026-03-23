@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "archivist-mcp"
+version = "0.1.0rc1"
+description = "Local-first MCP memory server for software projects"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+include = ["archivist_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,67 @@
+name: quality-gates
+
+on:
+  pull_request:
+    branches: ["main", "release/**"]
+  push:
+    branches: ["main", "release/**"]
+
+jobs:
+  retrieval-latency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Seed benchmark dataset
+        run: python3 scripts/seed_retrieval_benchmark.py --db .archivist/ci.db --project-id bench-proj --out .archivist/benchmark_queries.json
+      - name: Retrieval benchmark
+        run: python3 scripts/benchmark_retrieval.py --db .archivist/ci.db --query-file .archivist/benchmark_queries.json --json-out .archivist/reports/retrieval.json
+      - name: Retrieval benchmark (no embeddings)
+        run: python3 scripts/benchmark_retrieval.py --db .archivist/ci.db --query-file .archivist/benchmark_queries.json --disable-embeddings --json-out .archivist/reports/retrieval_no_embeddings.json
+
+  integration-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Integration tests
+        run: python3 -m unittest discover -s tests/integration -v
+
+  security-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Security tests
+        run: python3 -m unittest discover -s tests/security -v
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    needs: [retrieval-latency, integration-suite, security-checks]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run unified quality gate (fails on threshold regression)
+        run: |
+          python3 scripts/quality_gate.py \
+            --db .archivist/ci_gate.db \
+            --project-id bench-proj \
+            --query-file .archivist/benchmark_queries.json \
+            --history .archivist/benchmark_history.jsonl \
+            --report-out .archivist/reports/quality_gate_latest.json
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-reports
+          path: |
+            .archivist/reports/*.json
+            .archivist/benchmark_history.jsonl
